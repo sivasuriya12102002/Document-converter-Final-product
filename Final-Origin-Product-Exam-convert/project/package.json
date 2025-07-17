@@ -1,0 +1,47 @@
+{
+  "name": "get-converted-exams",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "build:wasm": "wasm-pack build --target web --out-dir pkg rust-formatter",
+    "build:python": "python scripts/build_python_wasm.py",
+    "build:all": "npm run build:wasm && npm run build:python && npm run build",
+    "setup": "chmod +x setup.sh && ./setup.sh",
+    "clean": "rm -rf node_modules rust-formatter/pkg dist && npm install",
+    "generate-pdf": "node scripts/generate-pdf.js",
+    "docs:pdf": "npm run generate-pdf"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.7",
+    "flowbite-react": "^0.11.7",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.7",
+    "pyodide": "^0.24.1",
+    "jszip": "^3.10.1",
+    "pdf-lib": "^1.17.1",
+    "tesseract.js": "^5.0.4",
+    "comlink": "^4.4.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "eslint": "^9.25.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^6.3.5",
+    "puppeteer": "^21.6.1",
+    "marked": "^11.1.1",
+    "wasm-pack": "^0.12.1"
+  }
+}
