@@ -5,8 +5,14 @@ metadata:
   namespace: get-converted-exams
   labels:
     app: get-converted-exams
+    version: v1
 spec:
   replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   selector:
     matchLabels:
       app: get-converted-exams
@@ -14,12 +20,19 @@ spec:
     metadata:
       labels:
         app: get-converted-exams
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: get-converted-exams
         image: your-dockerhub-username/get-converted-exams:latest
         ports:
         - containerPort: 80
+          name: http
+          protocol: TCP
         resources:
           requests:
             memory: "256Mi"
@@ -29,17 +42,51 @@ spec:
             cpu: "500m"
         livenessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
         env:
         - name: NODE_ENV
           value: "production"
+        - name: APP_VERSION
+          value: "1.0.0"
+        - name: DEPLOYMENT_TIME
+          value: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: tmp-volume
+          mountPath: /tmp
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: tmp-volume
+        emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       imagePullPolicy: Always
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

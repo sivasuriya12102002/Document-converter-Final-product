@@ -14,7 +14,17 @@
     "setup": "chmod +x setup.sh && ./setup.sh",
     "clean": "rm -rf node_modules rust-formatter/pkg dist && npm install",
     "generate-pdf": "node scripts/generate-pdf.js",
-    "docs:pdf": "npm run generate-pdf"
+    "docs:pdf": "npm run generate-pdf",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
+    "security:audit": "npm audit --audit-level moderate",
+    "docker:build": "docker build -t get-converted-exams .",
+    "docker:run": "docker run -p 80:80 get-converted-exams",
+    "k8s:deploy": "kubectl apply -f k8s/",
+    "k8s:delete": "kubectl delete -f k8s/"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.7",
@@ -27,7 +37,9 @@
     "jszip": "^3.10.1",
     "pdf-lib": "^1.17.1",
     "tesseract.js": "^5.0.4",
-    "comlink": "^4.4.1"
+    "comlink": "^4.4.1",
+    "react-error-boundary": "^4.0.11",
+    "react-helmet-async": "^2.0.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
@@ -42,6 +54,13 @@
     "vite": "^6.3.5",
     "puppeteer": "^21.6.1",
     "marked": "^11.1.1",
-    "wasm-pack": "^0.12.1"
+    "wasm-pack": "^0.12.1",
+    "vitest": "^1.2.0",
+    "@vitest/coverage-v8": "^1.2.0",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/jest-dom": "^6.2.0",
+    "@testing-library/user-event": "^14.5.2",
+    "jsdom": "^24.0.0",
+    "license-checker": "^25.0.1"
   }
 }

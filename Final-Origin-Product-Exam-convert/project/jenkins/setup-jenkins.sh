@@ -69,6 +69,12 @@ rules:
 - apiGroups: ["networking.k8s.io"]
   resources: ["*"]
   verbs: ["*"]
+- apiGroups: ["batch"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: ["autoscaling"]
+  resources: ["*"]
+  verbs: ["*"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -98,7 +104,8 @@ controller:
     name: $JENKINS_SERVICE_ACCOUNT
   
   adminUser: "admin"
-  adminPassword: "admin123"  # Change this in production
+  # Generate random password
+  adminPassword: "$(openssl rand -base64 32)"
   
   resources:
     requests:
@@ -134,6 +141,15 @@ controller:
     - ldap:682.v7b_544c9d1512
     - email-ext:2.102
     - mailer:463.vedf8358e006b_
+    - sonar:2.15
+    - htmlpublisher:1.31
+    - junit:1.60
+    - jacoco:3.3.2
+    - performance:3.20
+    - blueocean:1.25.2
+    - pipeline-utility-steps:2.13.0
+    - http_request:1.16
+    - build-user-vars-plugin:1.9
   
   serviceType: LoadBalancer
   
@@ -143,11 +159,34 @@ controller:
       kubernetes.io/ingress.class: alb
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
     hosts:
       - host: jenkins.your-domain.com  # Update with your domain
         paths:
           - path: /
             pathType: Prefix
+  
+  # JCasC Configuration
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: "Welcome to Jenkins CI/CD for getConvertedExams.io"
+        
+        security:
+          globalJobDslSecurityConfiguration:
+            useScriptSecurity: false
+        
+        unclassified:
+          location:
+            url: "https://jenkins.your-domain.com"
+          
+          slackNotifier:
+            teamDomain: "your-team"
+            token: "${SLACK_TOKEN}"
+            room: "#deployments"
 
 persistence:
   enabled: true
@@ -156,6 +195,8 @@ persistence:
 
 agent:
   enabled: true
+  image: "jenkins/inbound-agent"
+  tag: "latest"
   resources:
     requests:
       cpu: "500m"
@@ -163,6 +204,30 @@ agent:
     limits:
       cpu: "1000m"
       memory: "2Gi"
+  
+  # Custom agent with additional tools
+  customJenkinsLabels:
+    - "docker"
+    - "kubernetes"
+    - "aws"
+    - "nodejs"
+    - "rust"
+    - "python"
+
+# Additional tools
+additionalAgents:
+  maven:
+    podName: maven
+    customJenkinsLabels: maven
+    image: maven:3.8.1-jdk-11
+    privileged: false
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
 EOF
 
 # Install Jenkins
@@ -175,6 +240,48 @@ helm upgrade --install jenkins jenkins/jenkins \
 # Wait for Jenkins to be ready
 echo -e "${YELLOW}⏳ Waiting for Jenkins to be ready...${NC}"
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=jenkins-controller -n $JENKINS_NAMESPACE --timeout=600s
+
+# Install additional tools in Jenkins
+echo -e "${YELLOW}🔧 Installing additional tools...${NC}"
+kubectl exec -n $JENKINS_NAMESPACE deployment/jenkins -- bash -c "
+  # Install Node.js
+  curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+  apt-get install -y nodejs
+  
+  # Install Rust
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  source ~/.cargo/env
+  rustup target add wasm32-unknown-unknown
+  cargo install wasm-pack
+  
+  # Install Python
+  apt-get update && apt-get install -y python3 python3-pip
+  
+  # Install Docker CLI
+  curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
+  echo 'deb [arch=amd64] https://download.docker.com/linux/debian bullseye stable' > /etc/apt/sources.list.d/docker.list
+  apt-get update && apt-get install -y docker-ce-cli
+  
+  # Install kubectl
+  curl -LO 'https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl'
+  chmod +x kubectl && mv kubectl /usr/local/bin/
+  
+  # Install Helm
+  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  
+  # Install AWS CLI
+  curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip'
+  unzip awscliv2.zip && ./aws/install
+  
+  # Install Trivy
+  curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+  
+  # Install SonarScanner
+  wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
+  unzip sonar-scanner-cli-4.8.0.2856-linux.zip
+  mv sonar-scanner-4.8.0.2856-linux /opt/sonar-scanner
+  ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner
+" || echo "Some tools installation failed, continuing..."
 
 # Get Jenkins URL and credentials
 echo -e "${YELLOW}📋 Getting Jenkins access information...${NC}"
@@ -196,11 +303,32 @@ kubectl create secret generic kubeconfig-file \
   --dry-run=client -o yaml | kubectl apply -f -
 rm /tmp/kubeconfig
 
+# Create additional secrets for CI/CD
+echo -e "${YELLOW}🔐 Creating additional secrets...${NC}"
+
+# Create Docker registry secret
+kubectl create secret docker-registry docker-registry-secret \
+  --docker-server=https://index.docker.io/v1/ \
+  --docker-username=your-docker-username \
+  --docker-password=your-docker-password \
+  --docker-email=your-email@example.com \
+  -n $JENKINS_NAMESPACE \
+  --dry-run=client -o yaml | kubectl apply -f - || echo "Docker secret creation skipped"
+
+# Create GitHub webhook secret
+kubectl create secret generic github-webhook-secret \
+  --from-literal=secret=$(openssl rand -hex 20) \
+  -n $JENKINS_NAMESPACE \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 echo -e "${BLUE}📝 Next Steps:${NC}"
 echo -e "1. Access Jenkins at the URL above"
 echo -e "2. Configure AWS credentials in Jenkins"
 echo -e "3. Add GitHub webhook for automatic builds"
 echo -e "4. Create a new Pipeline job using the provided Jenkinsfile"
+echo -e "5. Configure SonarQube server (if using code quality checks)"
+echo -e "6. Set up Slack notifications (optional)"
+echo -e "7. Configure email notifications"
 
 # Cleanup
 rm jenkins-values.yaml
